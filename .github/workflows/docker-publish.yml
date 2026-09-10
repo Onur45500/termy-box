@@ -18,7 +18,8 @@ permissions:
   attestations: write
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/termy-box
+  # GHCR requires lowercase image names
+  IMAGE_NAME: ghcr.io/onur45500/termy-box
 
 jobs:
   smoke:
@@ -137,12 +138,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Cosign keyless sign (all tags)
+      - name: Cosign keyless sign
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           set -euo pipefail
-          for tag in ${{ steps.meta.outputs.tags }}; do
+          # docker/metadata-action emits newline-separated tags; do not unquote into `for`.
+          # Signing tag@digest once per tag; same digest for all tags from this build.
+          while IFS= read -r tag; do
+            [[ -z "${tag}" ]] && continue
             echo "Signing ${tag}@${DIGEST}"
             cosign sign --yes "${tag}@${DIGEST}"
-          done
+          done <<< "${TAGS}"

@@ -1,0 +1,85 @@
+# termy-box — local compose helpers
+#
+# CLI one-shot:     docker compose --env-file versions.env run --rm termy "list files"
+# Interactive:      docker compose --env-file versions.env run --rm termy
+# Web UI server:    docker compose --env-file versions.env up termy-server
+#                   → http://localhost:5000/termy/chat/
+#
+# Safer workspace (mount workspace dir, propose-only — commands shown, not executed):
+#   # optional: set TERMY_WORKSPACE to the host project to mount (default: .)
+#   docker compose --env-file versions.env --profile workspace run --rm termy-workspace "list files"
+#
+# Exec workspace (DANGEROUS — mounts workspace and allows command execution):
+#   docker compose --env-file versions.env --profile workspace-exec run --rm termy-workspace-exec "list files"
+
+x-build: &build
+  context: .
+  dockerfile: Dockerfile
+  args:
+    NPC_FORGE_REF: ${NPC_FORGE_REF:-58d33328ffc9031f7b7a16fbfc10285ca773e8c3}
+    DEBIAN_IMAGE: ${DEBIAN_IMAGE:-debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171}
+    IMAGE_SOURCE: ${IMAGE_SOURCE:-https://github.com/Onur45500/termy-box}
+
+services:
+  termy:
+    build: *build
+    image: termy-box:local
+    stdin_open: true
+    tty: true
+    working_dir: /home/termy/work
+    volumes:
+      - ./dataset:/dataset:ro
+      # Prefer --profile workspace / workspace-exec instead of uncommenting.
+      # SECURITY WARNING: mounting your real filesystem into a container that
+      # executes shell commands on your behalf is a security-relevant decision.
+      # - ${PWD}:/home/termy/work
+      # To let TERMy persist dataset edits, remount read-write:
+      # - ./dataset:/dataset:rw
+
+  termy-server:
+    build: *build
+    image: termy-box:local
+    environment:
+      TERMY_MODE: server
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./dataset:/dataset:ro
+    healthcheck:
+      test: ["CMD", "/home/termy/scripts/healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Mount host workspace read-write but refuse to execute proposed commands.
+  # TERMY_WORKSPACE defaults to "." (compose project dir). On Unix you can export
+  # TERMY_WORKSPACE="$PWD" to mount your current directory.
+  termy-workspace:
+    profiles: ["workspace"]
+    build: *build
+    image: termy-box:local
+    stdin_open: true
+    tty: true
+    working_dir: /home/termy/work
+    environment:
+      TERMY_PROPOSE_ONLY: "1"
+    volumes:
+      - ./dataset:/dataset:ro
+      - ${TERMY_WORKSPACE:-.}:/home/termy/work:rw
+
+  # DANGEROUS: mounts host workspace and allows TERMy to execute commands after confirm.
+  # Only use when you understand the risk. Prefer termy-workspace (propose-only).
+  termy-workspace-exec:
+    profiles: ["workspace-exec"]
+    build: *build
+    image: termy-box:local
+    stdin_open: true
+    tty: true
+    working_dir: /home/termy/work
+    environment:
+      TERMY_PROPOSE_ONLY: "0"
+    volumes:
+      - ./dataset:/dataset:ro
+      # SECURITY WARNING: commands TERMy runs can modify or delete files here.
+      - ${TERMY_WORKSPACE:-.}:/home/termy/work:rw

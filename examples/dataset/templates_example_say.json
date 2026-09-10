@@ -1,0 +1,27 @@
+[
+  {
+    "category": "termy-box-examples",
+    "input": [
+      "termy box say <||string||>",
+      "example say <||string||>"
+    ],
+    "thinking": [
+      "Minimal templates_*.json NER-style stub — echoes a tagged string safely."
+    ],
+    "message": [
+      "Echoing your tagged string via printf (TCS-safe)."
+    ],
+    "tools": [
+      {
+        "name": "run_in_terminal",
+        "arguments": {
+          "command": "printf '%s\\n' '<||string||>'",
+          "explanation": "Prints the captured string with printf + single quotes (TCS).",
+          "goal": "Safe tagged echo",
+          "mode": "sync"
+        }
+      }
+    ],
+    "permission": "ask"
+  }
+]

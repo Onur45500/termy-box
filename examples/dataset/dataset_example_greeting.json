@@ -1,0 +1,17 @@
+[
+  {
+    "category": "termy-box-examples",
+    "input": [
+      "termy box example ping",
+      "termy-box example greeting"
+    ],
+    "thinking": [
+      "Example NDF from termy-box examples/dataset — packaging smoke marker."
+    ],
+    "message": [
+      "termy-box example OK — marker EXAMPLE_PING_OK"
+    ],
+    "tools": [],
+    "permission": "ask"
+  }
+]

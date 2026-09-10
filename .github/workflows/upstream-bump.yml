@@ -1,0 +1,67 @@
+# Weekly check for a newer gioblu/NPC-Forge tip SHA.
+# Opens a PR updating versions.env — never auto-merges.
+
+name: upstream-bump
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve tip SHA
+        id: tip
+        run: |
+          set -euo pipefail
+          TIP="$(curl -fsSL https://api.github.com/repos/gioblu/NPC-Forge/commits/main \
+            | python3 -c 'import sys,json; print(json.load(sys.stdin)["sha"])')"
+          echo "sha=${TIP}" >> "$GITHUB_OUTPUT"
+          # shellcheck disable=SC1091
+          source ./versions.env
+          echo "current=${NPC_FORGE_REF}" >> "$GITHUB_OUTPUT"
+          if [[ "${TIP}" == "${NPC_FORGE_REF}" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update versions.env
+        if: steps.tip.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          TIP="${{ steps.tip.outputs.sha }}"
+          sed -i "s/^NPC_FORGE_REF=.*/NPC_FORGE_REF=${TIP}/" versions.env
+          echo "Updated NPC_FORGE_REF -> ${TIP}"
+          cat versions.env
+
+      - name: Create Pull Request
+        if: steps.tip.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore: bump NPC-Forge to ${{ steps.tip.outputs.sha }}"
+          title: "chore: bump NPC-Forge to ${{ steps.tip.outputs.sha }}"
+          body: |
+            Automated upstream pin bump (no auto-merge).
+
+            - Previous: `${{ steps.tip.outputs.current }}`
+            - New: `${{ steps.tip.outputs.sha }}`
+            - Upstream: https://github.com/gioblu/NPC-Forge/commit/${{ steps.tip.outputs.sha }}
+
+            After merge, CI will rebuild. Locally run:
+            ```bash
+            bash scripts/fetch-upstream.sh
+            docker compose --env-file versions.env build
+            ```
+          branch: chore/upstream-npc-forge-${{ steps.tip.outputs.sha }}
+          delete-branch: true
+          labels: dependencies,upstream

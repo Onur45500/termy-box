@@ -1,0 +1,148 @@
+# Unofficial community packaging — builds & publishes termy-box to GHCR.
+# Image: ghcr.io/${{ github.repository_owner }}/termy-box
+# Pins come from versions.env (single source of truth).
+
+name: docker-publish
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/termy-box
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Load versions.env
+        id: ver
+        run: |
+          set -a
+          # shellcheck disable=SC1091
+          source ./versions.env
+          set +a
+          echo "NPC_FORGE_REF=${NPC_FORGE_REF}" >> "$GITHUB_ENV"
+          echo "DEBIAN_IMAGE=${DEBIAN_IMAGE}" >> "$GITHUB_ENV"
+          echo "IMAGE_SOURCE=https://github.com/${{ github.repository }}" >> "$GITHUB_ENV"
+
+      - name: Fetch pinned upstream archive
+        run: bash scripts/fetch-upstream.sh "${NPC_FORGE_REF}"
+
+      - name: Validate example datasets
+        run: bash scripts/validate-dataset.sh examples/dataset
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: termy-box:ci
+          build-args: |
+            NPC_FORGE_REF=${{ env.NPC_FORGE_REF }}
+            DEBIAN_IMAGE=${{ env.DEBIAN_IMAGE }}
+            IMAGE_SOURCE=${{ env.IMAGE_SOURCE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test (piped stdin + non-root + propose-only)
+        run: |
+          echo "how are you" | docker run --rm -i termy-box:ci
+          docker run --rm termy-box:ci whoami | grep -qx termy
+          docker run --rm -t -e TERMY_PROPOSE_ONLY=1 termy-box:ci "list files" | tee /tmp/propose.out
+          grep -Eiq 'Proposed command:|propose-only blocked|ls -lah' /tmp/propose.out
+          # Must NOT have actually listed a real directory listing from execution —
+          # engine-only path prints "Proposed command:" then a blocked notice.
+          grep -Eq 'propose-only blocked' /tmp/propose.out
+
+  publish:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+    needs: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Load versions.env
+        run: |
+          set -a
+          # shellcheck disable=SC1091
+          source ./versions.env
+          set +a
+          echo "NPC_FORGE_REF=${NPC_FORGE_REF}" >> "$GITHUB_ENV"
+          echo "DEBIAN_IMAGE=${DEBIAN_IMAGE}" >> "$GITHUB_ENV"
+          echo "IMAGE_SOURCE=https://github.com/${{ github.repository }}" >> "$GITHUB_ENV"
+
+      - name: Fetch pinned upstream archive
+        run: bash scripts/fetch-upstream.sh "${NPC_FORGE_REF}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+
+      - name: Build and push multi-arch
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NPC_FORGE_REF=${{ env.NPC_FORGE_REF }}
+            DEBIAN_IMAGE=${{ env.DEBIAN_IMAGE }}
+            IMAGE_SOURCE=${{ env.IMAGE_SOURCE }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Cosign keyless sign (all tags)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for tag in ${{ steps.meta.outputs.tags }}; do
+            echo "Signing ${tag}@${DIGEST}"
+            cosign sign --yes "${tag}@${DIGEST}"
+          done

@@ -1,0 +1,30 @@
+# Git / VCS
+.git
+.gitignore
+.gitattributes
+
+# Docs & CI noise (not needed in the image context)
+README.md
+LICENSE
+.github
+*.md
+
+# Local dataset content should be mounted at runtime, not baked in
+dataset/**
+!dataset/.gitkeep
+
+# Editor / OS junk
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+*.swp
+*~
+
+# Build cache helpers (keep pinned tarball available for COPY)
+.build/*
+!.build/NPC-Forge-*.tar.gz
+!.build/.gitignore
+
+# Build artifacts
+*.log

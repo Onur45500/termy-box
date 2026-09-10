@@ -1,0 +1,4 @@
+# Pre-fetched upstream archives land here (see scripts/fetch-upstream.sh).
+# The Docker build COPYs .build/NPC-Forge-<sha>.tar.gz — do not commit large tarballs.
+*
+!.gitignore

@@ -1,0 +1,27 @@
+[
+  {
+    "category": "termy-box-examples",
+    "input": [
+      "termy box example echo hello",
+      "run the termy-box example echo"
+    ],
+    "thinking": [
+      "Harmless echo-only tool intent using TCS single-quote isolation."
+    ],
+    "message": [
+      "I will echo a fixed demo string (propose-only will refuse Execute)."
+    ],
+    "tools": [
+      {
+        "name": "run_in_terminal",
+        "arguments": {
+          "command": "echo 'termy-box-example-echo-OK'",
+          "explanation": "Prints a fixed demo string; no user-controlled interpolation.",
+          "goal": "Demo safe echo",
+          "mode": "sync"
+        }
+      }
+    ],
+    "permission": "ask"
+  }
+]

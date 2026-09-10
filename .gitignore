@@ -1,0 +1,15 @@
+# Upstream source archives (fetched by scripts/fetch-upstream.sh)
+.build/*.tar.gz
+.build/inspect/
+
+# Local editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# Optional local overrides
+.env
+*.log
